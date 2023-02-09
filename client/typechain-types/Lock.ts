@@ -2,7 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type {
-  BaseContract,
+  Contract,
   BigNumber,
   BytesLike,
   CallOverrides,
@@ -66,7 +66,7 @@ export type WithdrawalEvent = TypedEvent<
 
 export type WithdrawalEventFilter = TypedEventFilter<WithdrawalEvent>;
 
-export interface Lock extends BaseContract {
+export interface Lock extends Contract {
   connect(signerOrProvider: Signer | Provider | string): this;
   attach(addressOrName: string): this;
   deployed(): Promise<this>;
