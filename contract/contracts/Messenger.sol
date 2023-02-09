@@ -3,8 +3,11 @@
 pragma solidity ^0.8.9;
 
 import "hardhat/console.sol";
+import "./Ownable.sol";
 
-contract Messenger {
+contract Messenger is Ownable {
+    // ユーザが保留できるメッセージ数の上限を設定します。
+    uint256 public numOfPendingLimits;
     // メッセージ情報を定義します。
     struct Message {
         address payable sender;
@@ -17,6 +20,8 @@ contract Messenger {
 
     // メッセージの受取人アドレスをkeyにメッセージを保存します。
     mapping(address => Message[]) private messagesAtAddress;
+    // ユーザが保留中のメッセージの数を保存します。
+    mapping(address => uint256) private numOfPendingAtAddress;
 
     event NewMessage(
         address sender,
@@ -28,9 +33,20 @@ contract Messenger {
     );
 
     event MessageConfirmed(address receiver, uint256 index);
+    event NumOfPendingLimitsChanged(uint256 limits);
 
-    constructor() payable {
+    constructor(uint256 _numOfPendingLimits) payable {
         console.log("Here is my first smart contract!");
+
+        ownable();
+
+        numOfPendingLimits = _numOfPendingLimits;
+    }
+
+    // ownerのみこの関数を実行できるように修飾子を利用します。
+    function changeNumOfPendingLimits(uint256 _limits) external onlyOwner {
+        numOfPendingLimits = _limits;
+        emit NumOfPendingLimitsChanged(numOfPendingLimits);
     }
 
     // ユーザからメッセージを受け取り, 状態変数に格納します。
@@ -38,6 +54,15 @@ contract Messenger {
         public
         payable
     {
+        // メッセージ受取人の保留できるメッセージが上限に達しているかを確認します。
+        require(
+            numOfPendingAtAddress[_receiver] < numOfPendingLimits,
+            "The receiver has reached the number of pending limits"
+        );
+
+        // 保留中のメッセージの数をインクリメントします。
+        numOfPendingAtAddress[_receiver] += 1;
+
         console.log(
             "%s posts text:[%s] token:[%d]",
             msg.sender,

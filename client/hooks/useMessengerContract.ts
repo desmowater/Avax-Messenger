@@ -4,7 +4,7 @@ import abi from "../utils/Messenger.json";
 import { getEthereum } from "../utils/ethereum";
 import { Messenger as MessengerType } from "../typechain-types";
 
-const contractAddress = "0x60da97795E5b058f346403511bc4C5D5F7198c71";
+const contractAddress = "0x0907d64c8D9c899cF2069BA2Cd12E1Bc766586f5";
 const contractABI = abi.abi;
 
 export type Message = {
@@ -27,9 +27,12 @@ type PropsSendMessage = {
 type ReturnUseMessengerContract = {
   processing: boolean;
   ownMessages: Message[];
+  owner: string | undefined;
+  numOfPendingLimits: BigNumber | undefined;
   sendMessage: (props: PropsSendMessage) => void;
   acceptMessage: (index: BigNumber) => void;
   denyMessage: (index: BigNumber) => void;
+  changeNumOfPendingLimits: (limits: BigNumber) => void;
 };
 
 // useMessengerContractの引数のオブジェクトの型定義です。
@@ -46,6 +49,9 @@ export const useMessengerContract = ({
   const [messengerContract, setMessengerContract] = useState<MessengerType>();
   // ユーザ宛のメッセージを配列で保持する状態変数。
   const [ownMessages, setOwnMessages] = useState<Message[]>([]);
+  // 以下の2行を追加
+  const [owner, setOwner] = useState<string>();
+  const [numOfPendingLimits, setNumOfPendingLimits] = useState<BigNumber>();
 
   // ethereumオブジェクトを取得します。
   const ethereum = getEthereum();
@@ -153,9 +159,50 @@ export const useMessengerContract = ({
     }
   }
 
+  async function getOwner() {
+    if (!messengerContract) return;
+    try {
+      console.log("call getter of owner");
+      const owner = await messengerContract.owner();
+      setOwner(owner.toLocaleLowerCase());
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  async function getNumOfPendingLimits() {
+    if (!messengerContract) return;
+    try {
+      console.log("call getter of numOfPendingLimits");
+      const limits = await messengerContract.numOfPendingLimits();
+      setNumOfPendingLimits(limits);
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  async function changeNumOfPendingLimits(limits: BigNumber) {
+    if (!messengerContract) return;
+    try {
+      console.log("call changeNumOfPendingLimits with [%d]", limits.toNumber());
+      const txn = await messengerContract.changeNumOfPendingLimits(limits, {
+        gasLimit: 300000,
+      });
+      console.log("Processing...", txn.hash);
+      setProcessing(true);
+      await txn.wait();
+      console.log("Done -- ", txn.hash);
+      setProcessing(false);
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
   useEffect(() => {
     getMessengerContract();
     getOwnMessages();
+    getOwner();
+    getNumOfPendingLimits();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAccount, ethereum]);
 
@@ -187,26 +234,36 @@ export const useMessengerContract = ({
       }
     };
 
-  // MessageConfirmedのイベントリスナの追加
-  const onMessageConfirmed = (receiver: string, index: BigNumber) => {
-    console.log(
-      "MessageConfirmed index:[%d] receiver: [%s]",
-      index.toNumber(),
-      receiver
-    );
-    // 接続しているユーザ宛のメッセージの場合ownMessagesの該当メッセージを編集します。
-    if (receiver.toLocaleLowerCase() === currentAccount) {
-      setOwnMessages((prevState) => {
-        prevState[index.toNumber()].isPending = false;
-        return [...prevState];
-      });
-    }
-  };
+    // MessageConfirmedのイベントリスナの追加
+    const onMessageConfirmed = (receiver: string, index: BigNumber) => {
+      console.log(
+        "MessageConfirmed index:[%d] receiver: [%s]",
+        index.toNumber(),
+        receiver
+      );
+      // 接続しているユーザ宛のメッセージの場合ownMessagesの該当メッセージを編集します。
+      if (receiver.toLocaleLowerCase() === currentAccount) {
+        setOwnMessages((prevState) => {
+          prevState[index.toNumber()].isPending = false;
+          return [...prevState];
+        });
+      }
+    };
+
+    // NumOfPendingLimitsChangedのイベントリスナ
+    const onNumOfPendingLimitsChanged = (limitsChanged: BigNumber) => {
+      console.log(
+        "NumOfPendingLimitsChanged limits:[%d]",
+        limitsChanged.toNumber()
+      );
+      setNumOfPendingLimits(limitsChanged);
+    };
 
     /* イベントリスナの登録をします */
     if (messengerContract) {
       messengerContract.on("NewMessage", onNewMessage);
       messengerContract.on("MessageConfirmed", onMessageConfirmed); // <- 追加
+      messengerContract.on("NumOfPendingLimitsChanged", onNumOfPendingLimitsChanged);
     }
 
     /* イベントリスナの登録を解除します */
@@ -214,6 +271,7 @@ export const useMessengerContract = ({
       if (messengerContract) {
         messengerContract.off("NewMessage", onNewMessage);
         messengerContract.off("MessageConfirmed", onMessageConfirmed); // <- 追加
+        messengerContract.off("NumOfPendingLimitsChanged", onNumOfPendingLimitsChanged);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,8 +280,11 @@ export const useMessengerContract = ({
   return {
     processing,
     ownMessages,
+    owner,
+    numOfPendingLimits,
     sendMessage,
     acceptMessage,
     denyMessage,
+    changeNumOfPendingLimits,
   };
 };
